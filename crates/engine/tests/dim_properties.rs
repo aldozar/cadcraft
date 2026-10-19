@@ -51,3 +51,16 @@ fn bad_values_change_nothing() {
     }
     assert!(dims(&s)[0].1.overrides.is_empty());
 }
+
+#[test]
+fn a_rejected_request_does_not_create_its_layer() {
+    let mut s = Session::new();
+    s.script("dimlinear 0,0 10,0 5,-3\n").unwrap();
+    let h = dims(&s)[0].0.clone();
+    for p in [json!({ "layer": "Cotas", "textHeight": -1.0 }), json!({ "layer": "Cotas", "dimStyle": "Missing" })] {
+        let mut p = p;
+        p["handles"] = json!([h]);
+        assert!(s.execute("properties.set", &p).is_err(), "{p}");
+        assert!(s.doc().unwrap().layer("Cotas").is_none(), "{p}");
+    }
+}

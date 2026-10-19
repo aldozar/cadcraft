@@ -197,13 +197,14 @@ fn run_set(s: &mut Session, p: &Value) -> Result<Value> {
             }
         })
         .transpose()?;
-    if let Some(l) = str_param(p, "layer") {
-        d.ensure_layer(l);
-    }
     let dim_style = str_param(p, "dimStyle")
         .map(|n| d.dim_style(n).map(|st| st.name.clone()).ok_or_else(|| bad("properties.set", format!("dimension style `{n}` not found"))))
         .transpose()?;
     let dim_over = dim_overrides(p)?;
+    // Created only once every value has been checked: a rejected request leaves the drawing as it was.
+    if let Some(l) = str_param(p, "layer") {
+        d.ensure_layer(l);
+    }
     let anno_scale = d.current_anno_scale();
     for h in &hs {
         d.modify_entity(*h, |e| {
