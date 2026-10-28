@@ -7,7 +7,7 @@
 
 use serde_json::{Value, json};
 
-use super::*;
+use super::{CommandSpec, always, bad};
 use crate::{Accept, Input, Interactive, Prompt, Result, Session, Step};
 
 /// The interface bars MENUBAR and TOOLBAR control.
