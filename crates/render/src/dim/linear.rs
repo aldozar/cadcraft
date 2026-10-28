@@ -253,7 +253,9 @@ fn draw_linear_lines(config: &DimConfig<'_>, g: &mut DimGeometry, state: &Linear
         let offset = (state.text_mid - base).dot(n).abs();
         if offset > state.text_height / 2.0 + config.gap + 1e-9 {
             let side = if (base - state.text_mid).dot(state.text_axis) >= 0.0 { state.text_axis } else { -state.text_axis };
-            g.dim(vec![base, state.text_mid + side * (state.text_width / 2.0 + config.gap)]);
+            let end = state.text_mid + side * (state.text_width / 2.0 + config.gap);
+            g.text_leader = Some((base, end));
+            g.dim(vec![base, end]);
         }
     }
     if let Some(jog) = d.marks.jog_line {
