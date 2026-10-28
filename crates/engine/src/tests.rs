@@ -353,6 +353,26 @@ fn a_pick_beats_a_later_window_and_an_edit_drops_the_windows() {
     assert!(s.prompt_text().contains("Select objects"), "{}", s.prompt_text());
 }
 
+/// The Block Editor starts and ends with nothing selected, and with no selection windows left
+/// over to stretch by.
+#[test]
+fn the_block_editor_forgets_the_selection_windows() {
+    let mut s = Session::new();
+    s.viewport_px = (1000.0, 1000.0);
+    s.state_mut().unwrap().set_view(View { center: Vec2::new(5.0, 2.5), height: 20.0 });
+    let l = s.execute("line", &json!({ "points": [[20, 0], [22, 0]] })).unwrap()["handles"][0].clone();
+    s.execute("block", &json!({ "name": "B", "base": [20, 0], "handles": [l] })).unwrap();
+    s.cmdline("PLINE 0,0 10,0 10,5 0,5 C").unwrap();
+    s.idle_click(Vec2::new(12.0, 6.0), false).unwrap();
+    s.idle_click(Vec2::new(8.0, -1.0), false).unwrap();
+    assert!(s.selection_windows().is_some_and(|w| w.len() == 1));
+    s.execute("bedit", &json!({ "name": "B" })).unwrap();
+    assert_eq!(s.selection_windows(), Some(Vec::new()), "entering the Block Editor");
+    s.state_mut().unwrap().selection_windows.push((cadcraft_geom::Bounds2::new(Vec2::new(0.0, 0.0), Vec2::new(1.0, 1.0)), Vec::new()));
+    s.execute("bclose", &json!({ "save": false })).unwrap();
+    assert_eq!(s.selection_windows(), Some(Vec::new()), "leaving it");
+}
+
 #[test]
 fn undo_forgets_the_selection_windows() {
     let mut s = Session::new();
