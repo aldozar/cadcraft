@@ -318,6 +318,41 @@ fn stretch_moves_an_objects_vertices_only_by_its_own_windows() {
 
 /// UNDO forgets the windows of the selection it drops: an object picked afterwards stretches
 /// whole, not by a window from before the UNDO.
+/// An object picked first keeps moving whole when a later crossing window also takes it in,
+/// as in STRETCH's own selection; after a grip edit the windows no longer apply and STRETCH asks
+/// for objects again.
+#[test]
+fn a_pick_beats_a_later_window_and_an_edit_drops_the_windows() {
+    let mut s = Session::new();
+    s.viewport_px = (1000.0, 1000.0);
+    s.state_mut().unwrap().set_view(View { center: Vec2::new(5.0, 2.5), height: 20.0 });
+    s.cmdline("LINE 0,0 10,0").unwrap();
+    s.cmdline("").unwrap();
+    let l = s.doc().unwrap().model.last().unwrap().handle;
+    s.idle_click(Vec2::new(5.0, 0.0), false).unwrap();
+    assert_eq!(s.selection(), vec![l]);
+    // A crossing window over the line's right end.
+    s.idle_click(Vec2::new(12.0, 1.0), false).unwrap();
+    s.idle_click(Vec2::new(8.0, -1.0), false).unwrap();
+    s.cmdline("STRETCH").unwrap();
+    s.cmdline("0,0").unwrap();
+    s.cmdline("0,3").unwrap();
+    match &s.doc().unwrap().entity(l).unwrap().kind {
+        EntityKind::Line(ln) => assert!(ln.a.y == 3.0 && ln.b.y == 3.0, "the picked line moves whole: {ln:?}"),
+        _ => panic!(),
+    }
+
+    s.set_selection(Vec::new());
+    s.idle_click(Vec2::new(12.0, 4.0), false).unwrap();
+    s.idle_click(Vec2::new(8.0, 2.0), false).unwrap();
+    assert_eq!(s.selection(), vec![l]);
+    assert!(s.selection_windows().is_some_and(|w| w.len() == 1));
+    s.grip_edit(l, 1, Vec2::new(20.0, 3.0), crate::grips::GripMode::Stretch).unwrap();
+    assert_eq!(s.selection_windows(), None, "the drawing changed after the window");
+    s.cmdline("STRETCH").unwrap();
+    assert!(s.prompt_text().contains("Select objects"), "{}", s.prompt_text());
+}
+
 #[test]
 fn undo_forgets_the_selection_windows() {
     let mut s = Session::new();
@@ -330,7 +365,7 @@ fn undo_forgets_the_selection_windows() {
     s.idle_click(Vec2::new(8.0, -1.0), false).unwrap();
     assert_eq!(s.selection(), vec![a]);
     s.undo().unwrap();
-    assert!(s.selection_windows().is_empty());
+    assert_eq!(s.selection_windows(), Some(Vec::new()));
     s.idle_click(Vec2::new(10.0, 2.0), false).unwrap();
     assert_eq!(s.selection(), vec![a]);
     s.cmdline("STRETCH").unwrap();

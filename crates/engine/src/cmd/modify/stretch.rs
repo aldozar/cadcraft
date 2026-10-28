@@ -323,8 +323,12 @@ impl Interactive for StretchM {
         // A pickfirst selection is stretched at once: the vertices inside the windows that
         // selected its objects move, and objects picked one at a time move whole (#832).
         let pre = s.selection();
-        if !pre.is_empty() && s.settings.pickfirst {
-            for (bx, hs) in s.selection_windows() {
+        // Windows drawn before the drawing changed don't say what to stretch: select again.
+        if !pre.is_empty()
+            && s.settings.pickfirst
+            && let Some(windows) = s.selection_windows()
+        {
+            for (bx, hs) in windows {
                 for h in hs {
                     self.own_windows.entry(h).or_default().push(StretchArea::Box(bx));
                 }

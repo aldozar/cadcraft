@@ -26,13 +26,18 @@ impl Session {
         if let Some(pw) = self.pending_window.take() {
             let crossing = p.x < pw.corner.x;
             let bx = Bounds2::new(pw.corner, p);
-            let hit = select::select_window(self.doc()?, &space, bx, crossing);
+            let mut hit = select::select_window(self.doc()?, &space, bx, crossing);
             // Only the objects the window hit are stretched by it; the rest of their groups
             // come into the selection and move whole.
             let hs = cmd::groups::expand(self, hit.clone());
             let adding = pickadd || shift;
             let mut sel = if adding { self.selection() } else { Vec::new() };
+            let sel_before = sel.clone();
             let removing = shift && pickadd;
+            // Earlier windows drawn over a drawing that has changed since are dropped.
+            if self.selection_windows().is_none() {
+                self.state_mut()?.selection_windows.clear();
+            }
             if removing {
                 sel.retain(|h| !hs.contains(h));
             } else {
@@ -42,8 +47,12 @@ impl Session {
                 if !adding {
                     st.selection_windows.clear();
                 }
+                // An object already selected by a pick keeps moving whole, as in STRETCH's own
+                // selection; one selected by a window takes this window too.
+                hit.retain(|h| !sel_before.contains(h) || st.selection_windows.iter().any(|(_, hs)| hs.contains(h)));
                 if !removing && !hit.is_empty() {
                     st.selection_windows.push((bx, hit));
+                    st.selection_windows_doc = std::sync::Arc::downgrade(&st.doc);
                 }
             }
             self.set_selection(sel);

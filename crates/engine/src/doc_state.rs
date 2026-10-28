@@ -21,6 +21,9 @@ pub struct DocState {
     /// running, with the selected objects each picked: STRETCH with this selection moves the
     /// vertices inside them, as when its own crossing window picks the objects.
     pub selection_windows: Vec<(Bounds2, Vec<Handle>)>,
+    /// The drawing the selection windows were drawn over: once it changes (a grip edit moves a
+    /// vertex out of a window) the windows no longer say what to stretch.
+    pub selection_windows_doc: std::sync::Weak<Drawing>,
     pub previous_selection: Vec<Handle>,
     pub path: Option<String>,
     pub title: String,
@@ -54,6 +57,7 @@ impl DocState {
             undo_ctl: undoctl::UndoCtl::default(),
             selection: Vec::new(),
             selection_windows: Vec::new(),
+            selection_windows_doc: std::sync::Weak::new(),
             previous_selection: Vec::new(),
             path,
             title: title.into(),
