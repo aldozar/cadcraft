@@ -396,6 +396,7 @@ impl CadApp {
         if menus::run_ui_command(self, name, &Value::Null).is_some() {
             return;
         }
+        self.sync_bars();
         if let Err(e) = self.session.start(name) {
             self.session.echo(e.to_string());
         }

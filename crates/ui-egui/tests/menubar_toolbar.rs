@@ -82,3 +82,14 @@ fn a_bar_query_sees_a_ui_change_just_made() {
     app.run("toolbar", json!({ "show": true })).unwrap();
     assert!(app.ui.show_toolbar, "the request is applied at once");
 }
+
+#[test]
+fn menubar_started_from_the_ui_offers_the_bar_as_shown_now() {
+    let mut app = app();
+    app.ui.in_window_menu = true;
+    app.cmdline("");
+    app.ui.in_window_menu = false;
+    app.start("menubar");
+    let prompt = app.session.prompt_text();
+    assert!(prompt.contains("<0>"), "{prompt}");
+}
