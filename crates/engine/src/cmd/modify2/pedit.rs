@@ -321,6 +321,27 @@ pub(super) struct PeditM {
     pub(super) morig: std::collections::HashMap<Handle, Vec<PolyVertex>>,
 }
 
+/// A Yes/No answer: Enter is Yes, anything but Y/Yes/N/No is refused so the question is asked again.
+pub(super) fn yes_no(i: &Input) -> Result<bool> {
+    match i {
+        Input::Enter => Ok(true),
+        Input::Keyword(k) | Input::Text(k) => match k.trim().to_ascii_lowercase().as_str() {
+            "y" | "yes" => Ok(true),
+            "n" | "no" => Ok(false),
+            _ => Err(other("Enter Yes or No.")),
+        },
+        _ => Err(other("Enter Yes or No.")),
+    }
+}
+
+/// Width sets one width for the whole polyline, so the vertices Decurve gives back take it too.
+pub(super) fn clear_widths(vs: &mut [PolyVertex]) {
+    for v in vs {
+        v.start_width = 0.0;
+        v.end_width = 0.0;
+    }
+}
+
 impl PeditM {
     pub(super) fn poly(&self, s: &Session) -> Option<LwPolyline> {
         let e = s.doc().ok()?.entity(self.h?)?.clone();
@@ -443,8 +464,7 @@ impl Interactive for PeditM {
                 _ => Ok(Step::Continue),
             },
             PPhase::Convert => {
-                let no = kw(&i).is_some_and(|k| k.starts_with('n'));
-                if no {
+                if !yes_no(&i)? {
                     return Ok(Step::Done);
                 }
                 let h = self.h.ok_or_else(|| other("No object."))?;
@@ -508,6 +528,9 @@ impl Interactive for PeditM {
                 if let Input::Text(t) = &i {
                     let w = number(t).filter(|w| *w >= 0.0).ok_or_else(|| other("Requires a non-negative width."))?;
                     self.apply(s, "width", json!({ "width": w }))?;
+                    if let Some(o) = &mut self.original {
+                        clear_widths(o);
+                    }
                 }
                 self.phase = PPhase::Main;
                 Ok(Step::Continue)

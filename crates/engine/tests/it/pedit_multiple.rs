@@ -136,3 +136,62 @@ fn decurve_still_gives_back_the_vertices_after_a_join_that_joins_nothing_or_is_u
     assert_eq!(polylines(&s), vec![(4, false, 0.0), (3, false, 0.0)], "after an undone Join");
     s.cmdline("").unwrap();
 }
+
+fn widths(s: &Session) -> Vec<f64> {
+    s.doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter_map(|e| if let EntityKind::LwPolyline(p) = &e.kind { Some(p) } else { None })
+        .flat_map(|p| p.vertices.iter().flat_map(|v| [v.start_width, v.end_width]))
+        .collect()
+}
+
+#[test]
+fn convert_asks_again_for_an_answer_that_is_not_yes_or_no() {
+    let mut s = Session::new();
+    lines(&mut s, &[[0.0, 0.0, 10.0, 0.0]]);
+    for t in ["PEDIT", "M", "ALL", ""] {
+        s.cmdline(t).unwrap();
+    }
+    s.cmdline("foo").unwrap();
+    assert!(s.prompt_text().contains("Convert"), "{}", s.prompt_text());
+    assert_eq!(polylines(&s), vec![], "nothing converted on a wrong answer");
+    s.cmdline("Y").unwrap();
+    assert_eq!(polylines(&s).len(), 1);
+    s.cmdline("").unwrap();
+
+    // Single-polyline PEDIT asks again too.
+    lines(&mut s, &[[0.0, 5.0, 10.0, 5.0]]);
+    let l = s.doc().unwrap().model.last().unwrap().handle;
+    s.set_selection(vec![l]);
+    s.cmdline("PEDIT").unwrap();
+    s.cmdline("foo").unwrap();
+    assert!(s.prompt_text().contains("turn it into one"), "{}", s.prompt_text());
+    s.cmdline("N").unwrap();
+    assert!(s.running.is_none());
+}
+
+#[test]
+fn decurve_after_width_keeps_the_new_width() {
+    let mut s = Session::new();
+    for t in ["PLINE", "0,0", "W", "0", "2", "10,0", "10,10", "20,10", ""] {
+        s.cmdline(t).unwrap();
+    }
+    assert!(widths(&s).iter().any(|w| *w > 0.0), "{:?}", widths(&s));
+    for t in ["PEDIT", "M", "ALL", "", "S", "W", "0", "D", ""] {
+        s.cmdline(t).unwrap();
+    }
+    assert!(widths(&s).iter().all(|w| *w == 0.0), "Multiple: {:?}", widths(&s));
+
+    let mut s = Session::new();
+    for t in ["PLINE", "0,0", "W", "0", "2", "10,0", "10,10", "20,10", ""] {
+        s.cmdline(t).unwrap();
+    }
+    let h = s.doc().unwrap().model.last().unwrap().handle;
+    s.set_selection(vec![h]);
+    for t in ["PEDIT", "S", "W", "0", "D", ""] {
+        s.cmdline(t).unwrap();
+    }
+    assert!(widths(&s).iter().all(|w| *w == 0.0), "single: {:?}", widths(&s));
+}

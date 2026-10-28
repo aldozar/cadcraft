@@ -7,7 +7,7 @@ use serde_json::json;
 
 use super::super::curves;
 use super::super::machines::{SelOutcome, SelectPhase, number};
-use super::pedit::{PPhase, PeditM, pedit_apply, pedit_join};
+use super::pedit::{PPhase, PeditM, clear_widths, pedit_apply, pedit_join, yes_no};
 use super::{as_lwpoly, other, set_kind};
 use crate::{Accept, Input, Prompt, Result, Session, Step};
 
@@ -75,7 +75,7 @@ impl PeditM {
                 SelOutcome::Done(hs) => self.take_multi(s, hs),
             },
             PPhase::MConvert => {
-                let no = kw(&i).is_some_and(|k| k.starts_with('n'));
+                let no = !yes_no(&i)?;
                 let mut kept = Vec::new();
                 for h in std::mem::take(&mut self.multi) {
                     let kind = curves::entity(s, h)?.kind;
@@ -141,6 +141,7 @@ impl PeditM {
                 if let Input::Text(t) = &i {
                     let w = number(t).filter(|w| *w >= 0.0).ok_or_else(|| other("Requires a non-negative width."))?;
                     self.apply_all(s, "width", &json!({ "width": w }))?;
+                    self.morig.values_mut().for_each(|o| clear_widths(o));
                 }
                 self.phase = PPhase::MMain;
                 Ok(Step::Continue)
