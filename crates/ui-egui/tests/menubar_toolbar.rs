@@ -69,3 +69,16 @@ fn menubar_leaves_a_later_tool_bar_change() {
     assert!(!app.ui.in_window_menu, "MENUBAR applied");
     assert!(!app.ui.show_toolbar, "the tool bar keeps its later change");
 }
+
+/// A bar query through `CadApp::run` reports the bars as the interface shows them now, even when
+/// a UI change came just before it with no frame drawn in between.
+#[test]
+fn a_bar_query_sees_a_ui_change_just_made() {
+    let mut app = app();
+    app.ui.show_toolbar = true;
+    assert_eq!(app.run("toolbar", json!({})).unwrap(), json!({ "show": true }));
+    app.ui.show_toolbar = false;
+    assert_eq!(app.run("toolbar", json!({})).unwrap(), json!({ "show": false }));
+    app.run("toolbar", json!({ "show": true })).unwrap();
+    assert!(app.ui.show_toolbar, "the request is applied at once");
+}

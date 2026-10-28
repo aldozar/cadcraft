@@ -373,7 +373,11 @@ impl CadApp {
         if let Some(r) = menus::run_ui_command(self, id, &params) {
             return r;
         }
+        // The bars as the interface shows them now (a `ui.set` may have just changed one), and any
+        // MENUBAR or TOOLBAR request applied at once.
+        self.sync_bars();
         let r = self.session.execute(id, &params).map_err(|e| e.to_string());
+        self.sync_bars();
         if let Ok(v) = &r
             && let Some(m) = v.get("message").and_then(Value::as_str)
         {
