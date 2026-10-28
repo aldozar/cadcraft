@@ -144,8 +144,8 @@ pub struct Session {
     pub hatch_picks: Option<cmd::hatch::HatchPicks>,
     /// The window's menu bar and tool bar as the UI shows them (it reports them every frame).
     pub bars_shown: cmd::interface::InterfaceBars,
-    /// A change MENUBAR or TOOLBAR asked for, for the UI to apply.
-    pub bars_request: Option<cmd::interface::InterfaceBars>,
+    /// The bars MENUBAR or TOOLBAR asked to change, for the UI to apply.
+    pub bars_request: cmd::interface::BarsRequest,
 }
 
 impl Default for Session {
@@ -197,7 +197,7 @@ impl Session {
             lisp_last: None,
             hatch_picks: None,
             bars_shown: Default::default(),
-            bars_request: None,
+            bars_request: Default::default(),
         }
     }
 

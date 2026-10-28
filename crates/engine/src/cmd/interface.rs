@@ -23,6 +23,14 @@ impl Default for InterfaceBars {
     }
 }
 
+/// A change MENUBAR or TOOLBAR asked for: only the bars a command set, so the UI leaves the other
+/// as it is (it may have been changed since).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BarsRequest {
+    pub menubar: Option<bool>,
+    pub toolbar: Option<bool>,
+}
+
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("menubar", "Menu Bar", run_menubar)
@@ -39,11 +47,14 @@ pub fn specs() -> Vec<CommandSpec> {
     ]
 }
 
-fn set(s: &mut Session, f: impl FnOnce(&mut InterfaceBars)) {
-    let mut b = s.bars_request.unwrap_or(s.bars_shown);
-    f(&mut b);
-    s.bars_shown = b;
-    s.bars_request = Some(b);
+fn set_menubar(s: &mut Session, on: bool) {
+    s.bars_shown.menubar = on;
+    s.bars_request.menubar = Some(on);
+}
+
+fn set_toolbar(s: &mut Session, show: bool) {
+    s.bars_shown.toolbar = show;
+    s.bars_request.toolbar = Some(show);
 }
 
 fn run_menubar(s: &mut Session, p: &Value) -> Result<Value> {
@@ -55,14 +66,14 @@ fn run_menubar(s: &mut Session, p: &Value) -> Result<Value> {
             .filter(|v| *v <= 1)
             .ok_or_else(|| bad("menubar", "`value` must be 0 or 1"))?,
     };
-    set(s, |b| b.menubar = v == 1);
+    set_menubar(s, v == 1);
     Ok(json!({ "value": v }))
 }
 
 fn run_toolbar(s: &mut Session, p: &Value) -> Result<Value> {
     let Some(show) = p.get("show").filter(|v| !v.is_null()) else { return Ok(json!({ "show": s.bars_shown.toolbar })) };
     let show = show.as_bool().ok_or_else(|| bad("toolbar", "`show` must be true or false"))?;
-    set(s, |b| b.toolbar = show);
+    set_toolbar(s, show);
     Ok(json!({ "show": show }))
 }
 

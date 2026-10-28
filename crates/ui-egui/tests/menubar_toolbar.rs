@@ -55,3 +55,17 @@ fn the_json_forms_report_and_set_the_bars() {
     assert!(app.ui.show_toolbar && app.ui.in_window_menu);
     assert!(app.session.execute("menubar", &json!({ "value": 3 })).is_err());
 }
+
+/// MENUBAR changes only the menu bar: a tool bar change made before the request is applied
+/// stays (a control-API `ui.set` can come between them).
+#[test]
+fn menubar_leaves_a_later_tool_bar_change() {
+    let mut app = app();
+    app.ui.in_window_menu = true;
+    app.ui.show_toolbar = true;
+    app.session.execute("menubar", &json!({ "value": 0 })).unwrap();
+    app.ui.show_toolbar = false;
+    app.cmdline("'REDRAW");
+    assert!(!app.ui.in_window_menu, "MENUBAR applied");
+    assert!(!app.ui.show_toolbar, "the tool bar keeps its later change");
+}

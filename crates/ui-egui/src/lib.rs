@@ -418,9 +418,12 @@ impl CadApp {
 
     /// Apply a menu bar / tool bar change MENUBAR or TOOLBAR asked for, and report the bars shown.
     fn sync_bars(&mut self) {
-        if let Some(b) = self.session.bars_request.take() {
-            self.ui.in_window_menu = b.menubar;
-            self.ui.show_toolbar = b.toolbar;
+        let b = std::mem::take(&mut self.session.bars_request);
+        if let Some(on) = b.menubar {
+            self.ui.in_window_menu = on;
+        }
+        if let Some(show) = b.toolbar {
+            self.ui.show_toolbar = show;
         }
         self.session.bars_shown = cadcraft_engine::cmd::interface::InterfaceBars { menubar: self.ui.in_window_menu, toolbar: self.ui.show_toolbar };
     }
