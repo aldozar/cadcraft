@@ -93,3 +93,15 @@ fn menubar_started_from_the_ui_offers_the_bar_as_shown_now() {
     let prompt = app.session.prompt_text();
     assert!(prompt.contains("<0>"), "{prompt}");
 }
+
+#[test]
+fn enter_through_the_control_api_applies_the_bar_before_the_next_request() {
+    let mut app = app();
+    let ctx = egui::Context::default();
+    app.ui.show_toolbar = false;
+    app.start("toolbar");
+    let (req, _pending) = cadcraft_ui_egui::control::ControlRequest::new("cmdline.key", serde_json::json!({ "key": "enter" }));
+    cadcraft_ui_egui::control::handle(&mut app, &ctx, &req);
+    assert!(app.session.running.is_none());
+    assert!(app.ui.show_toolbar, "TOOLBAR's default Show is applied before the next request");
+}
