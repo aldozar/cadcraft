@@ -125,9 +125,10 @@ impl PeditM {
                     }
                     "reverse" | "r" => self.apply_all(s, "reverse", &json!({}))?,
                     "undo" | "u" => match self.mundo.pop() {
-                        Some((d, multi)) => {
+                        Some((d, multi, morig)) => {
                             *s.doc_mut()? = d;
                             self.multi = multi;
+                            self.morig = morig;
                             s.set_selection(self.multi.clone());
                         }
                         None => s.echo("Nothing to undo."),
@@ -157,13 +158,14 @@ impl PeditM {
         }
     }
 
-    /// Keep the drawing as it is for Undo (and the polylines being edited).
+    /// Keep the drawing as it is for Undo (and the polylines being edited, with their Decurve
+    /// record).
     fn remember(&mut self, s: &Session) -> Result<()> {
         let d: Drawing = s.doc()?.clone();
         if self.mundo.len() >= MAX_UNDO {
             self.mundo.remove(0);
         }
-        self.mundo.push((d, self.multi.clone()));
+        self.mundo.push((d, self.multi.clone(), self.morig.clone()));
         Ok(())
     }
 
@@ -215,16 +217,15 @@ impl PeditM {
             let h = rest.remove(0);
             let open = matches!(curves::entity(s, h)?.kind, EntityKind::LwPolyline(p) if !p.closed);
             if open {
-                pedit_join(s, h, &rest, fuzz)?;
+                // A polyline that took on segments no longer goes back past the Join on Decurve.
+                if pedit_join(s, h, &rest, fuzz)? > 0 {
+                    self.morig.remove(&h);
+                }
                 rest.retain(|o| s.doc().is_ok_and(|d| d.entity(*o).is_some()));
             }
             kept.push(h);
         }
         let added = before - kept.len();
-        // A joined polyline's vertices changed: Decurve no longer goes back past the Join.
-        for h in &kept {
-            self.morig.remove(h);
-        }
         s.echo(format!("{added} segments added to polyline"));
         self.multi = kept;
         s.set_selection(self.multi.clone());

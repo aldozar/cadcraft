@@ -313,10 +313,10 @@ pub(super) struct PeditM {
     /// Pieces split off by Break, with the history length after it (erased again by Undo).
     pub(super) split_off: Vec<(usize, Vec<Handle>)>,
     /// Multiple: the polylines being edited, their selection, and the drawing before each option
-    /// (with those polylines) for Undo.
+    /// (with those polylines and their Decurve record) for Undo.
     pub(super) multi: Vec<Handle>,
     pub(super) msel: SelectPhase,
-    pub(super) mundo: Vec<(cadcraft_doc::Drawing, Vec<Handle>)>,
+    pub(super) mundo: Vec<(cadcraft_doc::Drawing, Vec<Handle>, std::collections::HashMap<Handle, Vec<PolyVertex>>)>,
     /// Multiple: each polyline's vertices before its first Fit or Spline, which Decurve restores.
     pub(super) morig: std::collections::HashMap<Handle, Vec<PolyVertex>>,
 }
