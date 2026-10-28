@@ -77,11 +77,18 @@ fn same_content(a: &ListKey, b: &ListKey) -> bool {
 /// when the button goes down. A drag meant as a window takes longer than this.
 const FLICK_SECS: f64 = 0.3;
 
+/// A click made while the mouse moved ends this close (points) to where the button went down; a
+/// drag that goes further is a selection window, however fast.
+const FLICK_POINTS: f32 = 80.0;
+
 /// Where the button went down, when the primary drag that just ended was let go within
-/// [`FLICK_SECS`] (a click made while the mouse moved); `None` for a real drag. Forgets the press.
+/// [`FLICK_SECS`] and [`FLICK_POINTS`] of it (a click made while the mouse moved); `None` for a
+/// real drag. Forgets the press.
 fn flick_origin(app: &mut CadApp, ui: &egui::Ui) -> Option<Pos2> {
     let (origin, since) = app.canvas.drag_press.take()?;
-    (ui.input(|i| i.time) - since < FLICK_SECS).then_some(origin)
+    let (now, at) = ui.input(|i| (i.time, i.pointer.latest_pos()));
+    let near = at.is_none_or(|p| p.distance(origin) <= FLICK_POINTS);
+    (now - since < FLICK_SECS && near).then_some(origin)
 }
 
 #[derive(Default)]

@@ -179,6 +179,19 @@ fn a_click_made_while_moving_selects_in_move_and_a_slow_drag_is_a_window() {
     assert_eq!(h.state().session.selection(), vec![ids[0], ids[1]]);
 }
 
+/// A fast drag that goes far is still a window: only a short one is a click made while moving.
+#[test]
+fn a_fast_long_drag_is_a_window() {
+    let mut h = select_harness();
+    let ids = handles(&h);
+    h.state_mut().start("move");
+    h.run_steps(2);
+    // A twelfth of a second from (70, 20) to (90, 80): a window around the vertical line.
+    press_moving(&mut h, Vec2::new(70.0, 20.0), Vec2::new(90.0, 80.0), 4);
+    assert!(h.state().session.pending_window.is_none(), "closed where the drag ended");
+    assert_eq!(h.state().session.selection(), vec![ids[1]]);
+}
+
 /// With no command running, the same moving click picks the object.
 #[test]
 fn a_click_made_while_moving_picks_with_no_command() {
