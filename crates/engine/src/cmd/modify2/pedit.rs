@@ -313,6 +313,8 @@ pub(super) struct PeditM {
     pub(super) multi: Vec<Handle>,
     pub(super) msel: SelectPhase,
     pub(super) mundo: Vec<(cadcraft_doc::Drawing, Vec<Handle>)>,
+    /// Multiple: each polyline's vertices before its first Fit or Spline, which Decurve restores.
+    pub(super) morig: std::collections::HashMap<Handle, Vec<PolyVertex>>,
 }
 
 impl PeditM {
@@ -347,6 +349,10 @@ impl Interactive for PeditM {
     }
     fn begin(&mut self, s: &mut Session) -> Result<Step> {
         let sel = s.selection();
+        // Several objects selected first: straight into Multiple, as in AutoCAD.
+        if sel.len() > 1 && s.settings.pickfirst {
+            return self.start_multi(s);
+        }
         if let [h] = sel.as_slice() {
             let k = curves::entity(s, *h)?.kind;
             match k {
@@ -427,10 +433,7 @@ impl Interactive for PeditM {
                     s.set_selection(vec![h]);
                     Ok(Step::Continue)
                 }
-                Input::Keyword(k) if k.eq_ignore_ascii_case("multiple") || k.eq_ignore_ascii_case("m") => {
-                    self.start_multi(s);
-                    Ok(Step::Continue)
-                }
+                Input::Keyword(k) if k.eq_ignore_ascii_case("multiple") || k.eq_ignore_ascii_case("m") => self.start_multi(s),
                 Input::Keyword(_) => Err(other("Invalid option keyword.")),
                 Input::Enter => Ok(Step::Cancel),
                 _ => Ok(Step::Continue),

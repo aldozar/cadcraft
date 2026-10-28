@@ -84,3 +84,35 @@ fn lines_left_out_when_not_converted() {
     assert_eq!(polylines(&s), vec![(3, true, 0.0)], "only the polyline is edited");
     assert!(s.doc().unwrap().model.iter().any(|e| matches!(e.kind, EntityKind::Line(_))), "the line stays a line");
 }
+
+#[test]
+fn objects_selected_first_go_straight_to_multiple() {
+    let mut s = Session::new();
+    s.cmdline("pline 0,0 10,0 10,10").unwrap();
+    s.cmdline("").unwrap();
+    s.cmdline("pline 20,0 30,0 30,10").unwrap();
+    s.cmdline("").unwrap();
+    let all: Vec<_> = s.doc().unwrap().model.iter().map(|e| e.handle).collect();
+    s.set_selection(all);
+    for t in ["PEDIT", "W", "0.5", ""] {
+        s.cmdline(t).unwrap();
+    }
+    assert_eq!(polylines(&s), vec![(3, false, 0.5), (3, false, 0.5)], "no second selection asked for");
+    assert!(s.running.is_none());
+}
+
+#[test]
+fn decurve_after_fit_gives_back_the_vertices() {
+    let mut s = Session::new();
+    s.cmdline("pline 0,0 10,0 10,10 20,10").unwrap();
+    s.cmdline("").unwrap();
+    s.cmdline("pline 0,20 10,20 10,30").unwrap();
+    s.cmdline("").unwrap();
+    for t in ["PEDIT", "M", "ALL", "", "S"] {
+        s.cmdline(t).unwrap();
+    }
+    assert!(polylines(&s).iter().all(|p| p.0 > 4), "Spline adds vertices: {:?}", polylines(&s));
+    s.cmdline("D").unwrap();
+    assert_eq!(polylines(&s), vec![(4, false, 0.0), (3, false, 0.0)], "Decurve gives back each one's vertices");
+    s.cmdline("").unwrap();
+}

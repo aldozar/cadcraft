@@ -2,6 +2,7 @@
 //! AutoCAD does after `M` at "Select polyline". Join joins the selected objects with each other.
 
 use cadcraft_doc::{Drawing, EntityKind, Handle};
+use cadcraft_geom::PolyVertex;
 use serde_json::json;
 
 use super::super::curves;
@@ -17,11 +18,37 @@ const MAX_UNDO: usize = 64;
 const OPTIONS: [&str; 10] = ["Close", "Open", "Join", "Width", "Fit", "Spline", "Decurve", "Ltype gen", "Reverse", "Undo"];
 
 impl PeditM {
-    /// Start Multiple: select the objects to edit.
-    pub(super) fn start_multi(&mut self, s: &mut Session) {
-        s.set_selection(Vec::new());
-        self.msel = SelectPhase::default();
+    /// Start Multiple: select the objects to edit, or take the ones selected first.
+    pub(super) fn start_multi(&mut self, s: &mut Session) -> Result<Step> {
         self.phase = PPhase::MSelect;
+        self.msel = SelectPhase::begin(s);
+        if self.msel.done {
+            let hs = std::mem::take(&mut self.msel.picked);
+            return self.take_multi(s, hs);
+        }
+        s.set_selection(Vec::new());
+        Ok(Step::Continue)
+    }
+
+    /// The objects selected for Multiple: polylines, lines and arcs not on locked layers.
+    fn take_multi(&mut self, s: &mut Session, hs: Vec<Handle>) -> Result<Step> {
+        let d = s.doc()?;
+        let kinds = |h: &Handle| d.entity(*h).map(|e| e.kind.clone());
+        let editable: Vec<Handle> = hs
+            .iter()
+            .copied()
+            .filter(|h| matches!(kinds(h), Some(EntityKind::LwPolyline(_) | EntityKind::Line(_) | EntityKind::Arc(_))))
+            .filter(|h| !curves::is_locked(s, *h))
+            .collect();
+        let convert = editable.iter().any(|h| matches!(kinds(h), Some(EntityKind::Line(_) | EntityKind::Arc(_))));
+        self.multi = editable;
+        if self.multi.is_empty() {
+            s.echo("No polylines, lines or arcs selected.");
+            return Ok(Step::Done);
+        }
+        self.phase = if convert { PPhase::MConvert } else { PPhase::MMain };
+        s.set_selection(self.multi.clone());
+        Ok(Step::Continue)
     }
 
     /// The prompt of a Multiple phase.
@@ -45,25 +72,7 @@ impl PeditM {
             PPhase::MSelect => match self.msel.feed(s, &i)? {
                 SelOutcome::More => Ok(Step::Continue),
                 SelOutcome::Empty => Ok(Step::Done),
-                SelOutcome::Done(hs) => {
-                    let d = s.doc()?;
-                    let kinds = |h: &Handle| d.entity(*h).map(|e| e.kind.clone());
-                    let editable: Vec<Handle> = hs
-                        .iter()
-                        .copied()
-                        .filter(|h| matches!(kinds(h), Some(EntityKind::LwPolyline(_) | EntityKind::Line(_) | EntityKind::Arc(_))))
-                        .filter(|h| !curves::is_locked(s, *h))
-                        .collect();
-                    let convert = editable.iter().any(|h| matches!(kinds(h), Some(EntityKind::Line(_) | EntityKind::Arc(_))));
-                    self.multi = editable;
-                    if self.multi.is_empty() {
-                        s.echo("No polylines, lines or arcs selected.");
-                        return Ok(Step::Done);
-                    }
-                    self.phase = if convert { PPhase::MConvert } else { PPhase::MMain };
-                    s.set_selection(self.multi.clone());
-                    Ok(Step::Continue)
-                }
+                SelOutcome::Done(hs) => self.take_multi(s, hs),
             },
             PPhase::MConvert => {
                 let no = kw(&i).is_some_and(|k| k.starts_with('n'));
@@ -103,9 +112,9 @@ impl PeditM {
                     "open" | "o" => self.apply_all(s, "open", &json!({}))?,
                     "join" | "j" => self.phase = PPhase::MFuzz,
                     "width" | "w" => self.phase = PPhase::MWidth,
-                    "fit" | "f" => self.apply_all(s, "fit", &json!({}))?,
-                    "spline" | "s" => self.apply_all(s, "spline", &json!({}))?,
-                    "decurve" | "d" => self.apply_all(s, "decurve", &json!({}))?,
+                    "fit" | "f" => self.curve_all(s, "fit")?,
+                    "spline" | "s" => self.curve_all(s, "spline")?,
+                    "decurve" | "d" => self.decurve_all(s)?,
                     "ltype gen" | "l" => {
                         // One setting for all: the opposite of the first one's.
                         let on = self.multi.first().and_then(|h| curves::entity(s, *h).ok()).is_some_and(|e| match e.kind {
@@ -168,6 +177,33 @@ impl PeditM {
         Ok(())
     }
 
+    /// Fit or Spline all of them, first keeping each one's vertices for Decurve.
+    fn curve_all(&mut self, s: &mut Session, opt: &str) -> Result<()> {
+        for h in &self.multi {
+            if !self.morig.contains_key(h)
+                && let Ok(EntityKind::LwPolyline(p)) = curves::entity(s, *h).map(|e| e.kind)
+            {
+                self.morig.insert(*h, p.vertices);
+            }
+        }
+        self.apply_all(s, opt, &json!({}))
+    }
+
+    /// Decurve all of them: one fitted or splined here gets back its vertices from before (as
+    /// single-polyline PEDIT does), the others lose their arcs.
+    fn decurve_all(&mut self, s: &mut Session) -> Result<()> {
+        self.apply_all(s, "decurve", &json!({}))?;
+        for h in self.multi.clone() {
+            if let Some(orig) = self.morig.get(&h)
+                && let Ok(EntityKind::LwPolyline(mut p)) = curves::entity(s, h).map(|e| e.kind)
+            {
+                p.vertices = orig.iter().map(|v| PolyVertex { bulge: 0.0, ..*v }).collect();
+                set_kind(s, h, EntityKind::LwPolyline(p))?;
+            }
+        }
+        Ok(())
+    }
+
     /// Join the polylines being edited with each other, ends within `fuzz`: each one still open
     /// takes the others that meet it, and those go into it.
     fn join_all(&mut self, s: &mut Session, fuzz: f64) -> Result<()> {
@@ -185,6 +221,10 @@ impl PeditM {
             kept.push(h);
         }
         let added = before - kept.len();
+        // A joined polyline's vertices changed: Decurve no longer goes back past the Join.
+        for h in &kept {
+            self.morig.remove(h);
+        }
         s.echo(format!("{added} segments added to polyline"));
         self.multi = kept;
         s.set_selection(self.multi.clone());
