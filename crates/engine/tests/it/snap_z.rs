@@ -135,3 +135,31 @@ fn a_deferred_tangent_start_keeps_the_next_points_z() {
     assert_eq!(ls[0].1, Vec3::new(10.0, 10.0, 5.0), "{ls:?}");
     assert_eq!(ls[1], (Vec3::new(10.0, 10.0, 5.0), Vec3::new(20.0, 10.0, 1.0)), "{ls:?}");
 }
+
+fn points(s: &Session) -> Vec<Vec3> {
+    s.doc().unwrap().model.iter().filter_map(|e| if let EntityKind::Point(p) = &e.kind { Some(p.p) } else { None }).collect()
+}
+
+/// A center snap takes the circle's Z, though no object passes under the cursor there.
+#[test]
+fn a_center_snap_takes_the_circles_z() {
+    let mut s = Session::new();
+    s.add_entity(EntityKind::Circle(cadcraft_engine::doc::Circle { center: Vec3::new(0.0, 0.0, 5.0), radius: 10.0 })).unwrap();
+    s.cmdline("zoom e").ok();
+    s.cmdline("point").unwrap();
+    click(&mut s, Vec2::new(0.01, 0.01), mode::CEN);
+    assert_eq!(points(&s), vec![Vec3::new(0.0, 0.0, 5.0)]);
+}
+
+/// An intersection of two objects at different levels takes the Z of the first one drawn,
+/// whichever is on top.
+#[test]
+fn an_intersection_takes_the_z_of_the_first_object() {
+    let mut s = Session::new();
+    s.add_entity(EntityKind::Line(cadcraft_engine::doc::Line { a: Vec3::new(-5.0, 0.0, 0.0), b: Vec3::new(5.0, 0.0, 0.0) })).unwrap();
+    s.add_entity(EntityKind::Line(cadcraft_engine::doc::Line { a: Vec3::new(0.0, -5.0, 3.0), b: Vec3::new(0.0, 5.0, 3.0) })).unwrap();
+    s.cmdline("zoom e").ok();
+    s.cmdline("point").unwrap();
+    click(&mut s, Vec2::new(0.01, 0.01), mode::INT);
+    assert_eq!(points(&s), vec![Vec3::new(0.0, 0.0, 0.0)]);
+}

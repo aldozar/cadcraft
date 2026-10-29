@@ -107,18 +107,23 @@ impl Session {
         // An object snap gives the Z of what it snapped to, as in AutoCAD: a survey point's
         // level, a contour's elevation (OSNAPZ 1 uses the current elevation instead). A point
         // picked through a layout viewport stays at z = 0.
-        self.point_z = if hit.viewport.is_none() && hit.mode != 0 { self.snap_z(hit.point) } else { 0.0 };
+        self.point_z = if hit.viewport.is_none() && hit.mode != 0 { self.snap_z(&hit) } else { 0.0 };
         let result = self.input(hit.input());
         self.point_z = 0.0;
         self.picked_viewport = previous;
         result
     }
 
-    /// The Z an object snap at `p` gives a point: the Z of the object there ([`cmd::inquiry::z_at`]),
-    /// or ELEVATION with OSNAPZ on.
-    pub(crate) fn snap_z(&self, p: Vec2) -> f64 {
+    /// The Z an object snap gives a point: the Z of the object it snapped to at that point (of
+    /// the object found there, [`cmd::inquiry::z_at`], when the snap doesn't say), or ELEVATION
+    /// with OSNAPZ on.
+    pub(crate) fn snap_z(&self, hit: &snap::SnapHit) -> f64 {
         let elevation = self.doc().map(|d| d.header.f64("ELEVATION", 0.0)).unwrap_or(0.0);
-        let z = if self.settings.osnapz { elevation } else { cmd::inquiry::z_at(self, p) };
+        let on_source = || {
+            let e = self.doc().ok()?.entity(hit.source?)?;
+            cmd::inquiry::entity_z(e, hit.point).filter(|z| z.is_finite())
+        };
+        let z = if self.settings.osnapz { elevation } else { on_source().unwrap_or_else(|| cmd::inquiry::z_at(self, hit.point)) };
         if z.is_finite() { z } else { 0.0 }
     }
 

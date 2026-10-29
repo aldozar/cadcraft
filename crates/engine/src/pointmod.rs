@@ -365,7 +365,7 @@ impl Session {
                         Some(h) if self.point_mods.is_empty() => return self.input_snapped(h),
                         Some(h) => {
                             // The Z of what it snapped to, as for a snapped pick (OSNAPZ-aware).
-                            self.point_z = if h.viewport.is_none() { self.snap_z(h.point) } else { 0.0 };
+                            self.point_z = if h.viewport.is_none() { self.snap_z(&h) } else { 0.0 };
                             p = h.point;
                         }
                         None => {
