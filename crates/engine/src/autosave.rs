@@ -371,7 +371,8 @@ mod native {
 
     impl Autosaver {
         /// Autosave what is due (writing in the background) and delete files no longer needed.
-        /// Returns how long until the next autosave is due, so the host can wake up for it.
+        /// Returns how long until the next autosave or drawing-lock heartbeat is due, so the host
+        /// can wake up for it.
         pub fn tick(&mut self, s: &Session) -> Option<Duration> {
             let now = self.start.elapsed().as_secs_f64();
             self.reap();
@@ -381,7 +382,17 @@ mod native {
             self.perform(jobs);
             self.heartbeat(&dir, now);
             self.locks.sync(s, &self.instance);
-            self.next_due(now, minutes).map(Duration::from_secs_f64)
+            // The drawing locks need their heartbeat even with nothing to autosave (SAVETIME 0,
+            // every drawing saved): left untouched they go stale and another app takes them over.
+            let due = self.next_due(now, minutes).map(Duration::from_secs_f64);
+            due.into_iter().chain(self.locks.next_beat()).min()
+        }
+
+        /// Keep the drawing locks with `locks` instead of the default ones (e.g. a shorter
+        /// heartbeat, see [`crate::drawlock::Locks::with_heartbeat`]).
+        pub fn with_locks(mut self, locks: crate::drawlock::Locks) -> Self {
+            self.locks = locks;
+            self
         }
 
         /// What the drawing locks have to tell the user (someone else has a drawing open).

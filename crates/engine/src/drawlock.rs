@@ -290,6 +290,13 @@ mod native {
             }
         }
 
+        /// How long until [`Locks::sync`] next has a lock to touch or look at again (the
+        /// shortest wait over held locks and others'), so an idle host still wakes up for it;
+        /// `None` when no drawing open here has a lock.
+        pub fn next_beat(&self) -> Option<Duration> {
+            self.held.values().chain(self.others.values()).map(|at| self.beat.saturating_sub(at.elapsed())).min()
+        }
+
         /// The notes [`Locks::sync`] made since the last call.
         pub fn take_notes(&mut self) -> Vec<String> {
             std::mem::take(&mut self.notes)

@@ -81,7 +81,8 @@ impl CadApp {
         }
     }
 
-    /// Every frame: autosave what is due, and wake up when the next one is; keep the drawing locks.
+    /// Every frame: autosave what is due and keep the drawing locks, and wake up when the next
+    /// autosave or lock heartbeat is.
     pub fn autosave_tick(&mut self, _ctx: &egui::Context) {
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(wait) = self.autosave.as_mut().and_then(|s| s.tick(&self.session)) {

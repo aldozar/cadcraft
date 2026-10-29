@@ -5,6 +5,7 @@
 use std::time::{Duration, SystemTime};
 
 use cadcraft_engine::Session;
+use cadcraft_engine::autosave::{self, Autosaver};
 use cadcraft_engine::cmd::file::{IoHooks, set_io};
 use cadcraft_engine::drawlock::{Locks, holder, lock_path};
 use serde_json::json;
@@ -79,6 +80,28 @@ fn a_second_app_is_told_who_has_the_drawing_and_the_lock_follows_the_first() {
     assert_eq!(lb.take_notes().len(), 1, "told who has it now");
     assert_eq!(holder(&file).map(|h| h.instance), Some("3-c".to_string()));
     lc.release_all("3-c");
+    assert!(!lock_path(&file).exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// An idle app with every drawing saved (and SAVETIME 0) still wakes up for the lock heartbeat:
+/// otherwise its lock goes stale and another app takes the drawing over without a word.
+#[test]
+fn an_idle_app_wakes_up_for_the_lock_heartbeat() {
+    let dir = std::env::temp_dir().join(format!("cadcraft-lock-idle-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("Saved Plan.dxf");
+    std::fs::write(&file, cadcraft_io::write(&cadcraft_engine::doc::Drawing::new_metric(), "x.dxf").unwrap()).unwrap();
+    let s = session_with(&file.to_string_lossy());
+    assert!(!s.docs.iter().any(|d| d.is_dirty()), "nothing to autosave");
+    autosave::set_savetime(0);
+    let beat = Duration::from_secs(2);
+    let mut a = Autosaver::new("1-idle").with_locks(Locks::with_heartbeat(beat));
+    let wait = a.tick(&s);
+    assert_eq!(holder(&file).map(|h| h.instance), Some("1-idle".to_string()));
+    assert!(wait.is_some_and(|d| d <= beat), "{wait:?}");
+    a.shutdown();
     assert!(!lock_path(&file).exists());
     let _ = std::fs::remove_dir_all(&dir);
 }
