@@ -115,3 +115,23 @@ fn a_lisp_point_keeps_its_z() {
     s.cmdline("").unwrap();
     assert!(lines(&s).contains(&(Vec3::new(1.0, 2.0, 7.0), Vec3::new(5.0, 2.0, 0.0))), "{:?}", lines(&s));
 }
+
+/// A LINE started with a deferred tangent keeps the Z typed for its next point, and the
+/// segment after it starts there.
+#[test]
+fn a_deferred_tangent_start_keeps_the_next_points_z() {
+    let mut s = Session::new();
+    s.cmdline("circle 0,0 2").unwrap();
+    s.cmdline("zoom e").ok();
+    s.cmdline("line").unwrap();
+    s.cmdline("tan").unwrap();
+    s.input(cadcraft_engine::Input::Point(Vec2::new(-1.4, 1.4))).unwrap();
+    s.cmdline("10,10,5").unwrap();
+    s.cmdline("20,10,1").unwrap();
+    s.cmdline("").unwrap();
+    let ls = lines(&s);
+    assert_eq!(ls.len(), 2, "{ls:?}");
+    assert_eq!(ls[0].0.z, 0.0, "{ls:?}");
+    assert_eq!(ls[0].1, Vec3::new(10.0, 10.0, 5.0), "{ls:?}");
+    assert_eq!(ls[1], (Vec3::new(10.0, 10.0, 5.0), Vec3::new(20.0, 10.0, 1.0)), "{ls:?}");
+}

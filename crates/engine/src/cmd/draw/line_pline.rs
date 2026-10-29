@@ -81,9 +81,11 @@ impl LineM {
             let what = if first.mode == snap::mode::TAN { "tangent" } else { "perpendicular" };
             return Err(crate::EngineError::Other(format!("No {what} line through that point; pick another point.")));
         };
-        self.handles.push(s.add_entity(line(a, b))?);
+        // The deferred start lies on the curve at z = 0; the other end keeps its own Z.
+        let z = s.point_z();
+        self.handles.push(s.add_entity(line3(a.to3(0.0), b.to3(z)))?);
         self.pts = vec![a, b];
-        self.zs = vec![0.0, 0.0];
+        self.zs = vec![0.0, z];
         self.first = None;
         s.last_point = b;
         Ok(Step::Continue)
