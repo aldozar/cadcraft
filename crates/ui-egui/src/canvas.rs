@@ -770,19 +770,40 @@ fn remember_drag_press(app: &mut CadApp, ui: &egui::Ui, resp: &egui::Response) {
 /// A selection-window drag let go at once: a click made while the mouse was moving, not a drag
 /// (#1001). It counts where the button went down, as a click: it picks the object there or starts
 /// a click-click window, instead of closing a tiny window that selects nothing. Returns whether
-/// the drag was such a click.
-fn flick_click(app: &mut CadApp, ui: &egui::Ui, xf: &Xf, shift: bool) -> bool {
+/// the drag was such a click. With `keep_corner`, a click-click window already open keeps its
+/// first corner and the point closes it.
+fn flick_click(app: &mut CadApp, ui: &egui::Ui, xf: &Xf, shift: bool, keep_corner: bool) -> bool {
     let Some(origin) = flick_origin(app, ui) else { return false };
-    app.session.pending_window = None;
+    if !keep_corner {
+        app.session.pending_window = None;
+    }
     let at = xf.to_world(origin);
     // Over overlapping objects it offers selection cycling's list, as a still click does.
-    if !cycle_click(app, xf, Some(origin), Some(at), shift) {
+    if keep_corner || !cycle_click(app, xf, Some(origin), Some(at), shift) {
         let done = if app.session.prompting() { app.session.input(Input::Point(at)) } else { app.session.idle_click(at, shift) };
         if let Err(e) = done {
             app.session.echo(e.to_string());
         }
     }
     true
+}
+
+/// A drag that opened no selection window let go at once (#1001): with a click-click window
+/// open it is its second corner, and with PICKDRAG off and no command running it picks the
+/// object where the button went down. egui saw a drag, so no click path counted it.
+fn flick_without_window(app: &mut CadApp, ui: &egui::Ui, xf: &Xf, rect: Rect, shift: bool) {
+    let keep_corner = app.session.pending_window.is_some();
+    let idle_pick = !app.session.settings.pickdrag && !app.session.prompting();
+    let Some((origin, _)) = app.canvas.drag_press else { return };
+    if (keep_corner || idle_pick)
+        && rect.contains(origin)
+        && app.cmd.options.is_none()
+        && app.canvas.cycle.is_none()
+        && grip_at(app, xf, Some(origin)).is_none()
+        && crate::dyngrips::at(app, xf, Some(origin)).is_none()
+    {
+        flick_click(app, ui, xf, shift, keep_corner);
+    }
 }
 
 /// Draw the drawing area and handle its input (zoom and pan, picking, the crosshair) for this
@@ -951,9 +972,11 @@ pub fn show(app: &mut CadApp, ui: &mut egui::Ui) {
     {
         app.canvas.drag_window = app.session.begin_window(xf.to_world(origin));
     }
-    if app.canvas.drag_window && resp.drag_stopped_by(egui::PointerButton::Primary) {
+    if !app.canvas.drag_window && !middle_down && resp.drag_stopped_by(egui::PointerButton::Primary) {
+        flick_without_window(app, ui, &xf, rect, mods.shift);
+    } else if app.canvas.drag_window && resp.drag_stopped_by(egui::PointerButton::Primary) {
         app.canvas.drag_window = false;
-        if !flick_click(app, ui, &xf, mods.shift)
+        if !flick_click(app, ui, &xf, mods.shift, false)
             && app.session.pending_window.is_some()
             && let Some(end) = ui.input(|i| i.pointer.interact_pos())
         {

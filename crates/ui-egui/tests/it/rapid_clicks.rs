@@ -201,6 +201,34 @@ fn a_click_made_while_moving_picks_with_no_command() {
     assert_eq!(h.state().session.selection(), vec![ids[1]]);
 }
 
+/// A click-click window already open: its second corner, clicked while moving, closes it where the
+/// button went down instead of being lost to the drag egui saw.
+#[test]
+fn a_click_made_while_moving_closes_a_click_click_window() {
+    let mut h = select_harness();
+    let ids = handles(&h);
+    let corner = screen(&h, Vec2::new(70.0, 20.0));
+    button(&mut h, corner, true);
+    h.run_steps(1);
+    button(&mut h, corner, false);
+    h.run_steps(2);
+    assert!(h.state().session.pending_window.is_some(), "the click on empty space opened a window");
+    press_moving(&mut h, Vec2::new(90.0, 80.0), Vec2::new(92.0, 82.0), 4);
+    assert!(h.state().session.pending_window.is_none(), "the moving click closed the window");
+    assert_eq!(h.state().session.selection(), vec![ids[1]], "the window took the vertical line");
+}
+
+/// With PICKDRAG 0 no drag opens a window, and a click made while moving still picks the object.
+#[test]
+fn a_click_made_while_moving_picks_with_pickdrag_off() {
+    let mut h = select_harness();
+    let ids = handles(&h);
+    h.state_mut().session.settings.pickdrag = false;
+    press_moving(&mut h, Vec2::new(80.0, 40.0), Vec2::new(83.0, 41.0), 4);
+    assert_eq!(h.state().session.selection(), vec![ids[1]]);
+    assert!(h.state().session.pending_window.is_none());
+}
+
 /// TRIM's "Select object to trim": a click made while moving trims the part the button went down
 /// on.
 #[test]
