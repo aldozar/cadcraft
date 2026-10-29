@@ -107,7 +107,7 @@ pub fn hex(c: Color32) -> String {
 /// Parse `"#rrggbb"` (the `#` is optional).
 pub fn parse_hex(s: &str) -> Option<Color32> {
     let h = s.trim().trim_start_matches('#');
-    if h.len() != 6 || !h.is_ascii() {
+    if h.len() != 6 || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     let byte = |i: usize| h.get(i..i + 2).and_then(|b| u8::from_str_radix(b, 16).ok());
@@ -310,7 +310,7 @@ fn reset_ui(app: &mut CadApp) {
     app.ui.animations = d.animations;
     app.ui.save_format = d.save_format;
     app.ui.save_version = d.save_version;
-    app.ui.system_cursor = d.system_cursor;
+    app.ui.system_cursor = app.system_cursor_default;
     app.ui.history_lines = d.history_lines;
     app.options = UiOptions::default();
 }
@@ -353,7 +353,7 @@ impl CadApp {
                 let _ = parse_ui(key, value, &mut c);
             }
         }
-        // CADCRAFT_SYSTEM_CURSOR=1 turns the system cursor on whatever was saved.
+        // A saved `false` leaves the host's default (`set_system_cursor_default`) in place.
         if c.system_cursor == Some(true) {
             self.ui.system_cursor = true;
         }
@@ -387,7 +387,7 @@ mod tests {
         let c = Color32::from_rgb(0x12, 0xab, 0xff);
         assert_eq!(parse_hex(&hex(c)), Some(c));
         assert_eq!(parse_hex("FFFFFF"), Some(Color32::WHITE));
-        for bad in ["", "#fff", "#gggggg", "#12345678", "#ééé", "#1234567"] {
+        for bad in ["#+f+0+0", "", "#fff", "#gggggg", "#12345678", "#ééé", "#1234567"] {
             assert_eq!(parse_hex(bad), None, "{bad}");
         }
     }
