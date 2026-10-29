@@ -42,7 +42,7 @@ ignored; there are no context menus. Remaining: **≈ 110–170 Opus 5.5 hours**
 
 | Input | AutoCAD | CADCraft | Evidence |
 |---|---|---|---|
-| `x,y[,z]`, `@dx,dy[,dz]`, `@d<a`, `d<a`, `#x,y[,z]`, bare `@` | yes | yes; `#` equals absolute because there is no UCS; a typed Z reaches the command (`Session::point_z`; relative forms add to LASTPOINT's Z), but only 3DPOLY reads it so far | `prompt.rs` (`parse_point3_with`) |
+| `x,y[,z]`, `@dx,dy[,dz]`, `@d<a`, `d<a`, `#x,y[,z]`, bare `@` | yes | yes; `#` equals absolute because there is no UCS; a typed Z reaches the command (`Session::point_z`; relative forms add to LASTPOINT's Z); LINE, POINT and 3DPOLY read it, and a point picked with an object snap carries the Z of the object it snapped to | `prompt.rs` (`parse_point3_with`) |
 | `*x,y` (WCS override) | yes | yes (`*x,y`, `*@dx,dy`, `@*dx,dy`); the same as the plain forms because there is no UCS | `prompt.rs` |
 | Direct distance entry | yes, honours ortho, polar and tracking paths | yes, ortho; polar only through the UI's snapped cursor | `lib.rs:782-793` |
 | Angle forms: `45d30'`, radians, grads, surveyor `N45dE` | yes | yes | `units.rs:141-197` |
