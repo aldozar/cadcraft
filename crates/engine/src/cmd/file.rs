@@ -380,16 +380,22 @@ fn run_whohas(s: &mut Session, p: &Value) -> Result<Value> {
         Some(Value::String(path)) => path.clone(),
         Some(_) => return Err(bad("whohas", "`path` must be a file path")),
     };
-    #[cfg(not(target_arch = "wasm32"))]
-    let holder = crate::drawlock::holder(std::path::Path::new(&path));
+    // The web has no lock files to look at: an error, not "nobody has it open".
     #[cfg(target_arch = "wasm32")]
-    let holder: Option<crate::drawlock::Holder> = None;
-    let msg = match &holder {
-        Some(h) => format!("{} is open by {}.", file_name(&path), h.describe()),
-        None => format!("Nobody has {} open (no current lock).", file_name(&path)),
-    };
-    s.echo(msg);
-    Ok(json!({ "path": path, "holder": holder }))
+    {
+        let _ = path;
+        Err(bad("whohas", "drawing locks are not available on the web"))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let holder = crate::drawlock::holder(std::path::Path::new(&path));
+        let msg = match &holder {
+            Some(h) => format!("{} is open by {}.", file_name(&path), h.describe()),
+            None => format!("Nobody has {} open (no current lock).", file_name(&path)),
+        };
+        s.echo(msg);
+        Ok(json!({ "path": path, "holder": holder }))
+    }
 }
 
 /// `close [index]`: cancel the running command, remove the drawing (default: active), keep the active index valid, and bump the document epoch; an unknown index is an error.
