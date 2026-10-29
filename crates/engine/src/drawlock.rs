@@ -78,7 +78,7 @@ mod native {
     use std::collections::{HashMap, HashSet};
     use std::time::{Duration, Instant, SystemTime};
 
-    use super::*;
+    use super::{HEARTBEAT_SECS, Holder, MAX_LOCK_BYTES, Path, PathBuf, STALE_SECS, lock_path, lockable};
     use crate::Session;
 
     /// This user's name, from the environment.
