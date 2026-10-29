@@ -112,9 +112,8 @@ connectivity (including islands made of separate lines, #163). Caps: 60,000 segm
 islands. Each traced edge keeps the input polyline it came from, so the circular runs of a
 loop traced around a point become arcs again with their corners on the exact curves
 (`engine/src/cmd/hatch/arcs.rs`, #1167): a hatched circle is two half circles and its area is
-exact. Missing: **gap tolerance (HPGAPTOL)**, ellipses and splines in traced boundaries (they
-stay tessellated), island detection modes
-beyond the default, boundary sets, and retained associative boundaries for every case. Pattern
+exact. Missing: ellipses and splines in traced boundaries (they stay tessellated), island
+detection modes beyond the default, boundary sets, and retained associative boundaries for every case. Pattern
 lines are scanline families clipped against the tessellated loops (`render/src/hatch.rs`).
 
 ## Constraint solver (≈ 50%)
@@ -150,7 +149,7 @@ coordinates to 1e-9 relative.
 3. A tolerance context relative to the drawing's extents, and a known-answer test suite at
    origin and at 1e6–1e7 coordinates. 8–12 h.
 4. Exact areas and MASSPROP for bulge polylines, regions (2D) and hatch loops. 6–10 h.
-5. Hatch gap tolerance and curved boundaries. 8–12 h.
+5. Hatch curved boundaries: ellipses and splines in traced boundaries. 8–12 h.
 6. ~~Solver: DOF reporting, G2 Smooth, ellipse/spline geometry, constraint inference.~~ Done (#546).
 7. Spline fit options (end tangents, knot parameterisation, fit tolerance, periodic). 6–10 h.
 
