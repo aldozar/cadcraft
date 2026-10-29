@@ -162,9 +162,11 @@ pub fn lp_args(printer: &str, page_size: Option<&str>, copies: u32, title: &str)
 
 #[cfg(all(unix, not(target_arch = "wasm32")))]
 mod system {
-    use super::*;
-    use std::io::Write;
-    use std::process::{Command, Stdio};
+    use super::{MAX_PPD, PlotterConfig, Ppd, lp_args, parse_destinations, parse_ppd, parse_request_id, printer_config, valid_name};
+    use std::io::{Read, Write};
+    use std::process::{Command, ExitStatus, Stdio};
+    use std::sync::mpsc::{self, Receiver};
+    use std::time::{Duration, Instant};
 
     fn ppd(name: &str) -> Option<Ppd> {
         let path = format!("/etc/cups/ppd/{name}.ppd");
@@ -176,33 +178,96 @@ mod system {
 
     /// Longest `lpstat` may take: a CUPS that doesn't answer gives no printers instead of a
     /// listing that never ends.
-    const LPSTAT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+    const LPSTAT_TIMEOUT: Duration = Duration::from_secs(5);
+    /// Longest `lp` may take to queue a plot: a CUPS that doesn't answer is an error, not an app
+    /// that hangs.
+    const LP_TIMEOUT: Duration = Duration::from_secs(60);
+    /// How often [`run`] looks whether the command has ended.
+    const POLL: Duration = Duration::from_millis(20);
+    /// How long, once the command has ended, [`run`] waits for the rest of its output (only
+    /// something else holding its pipes makes this wait).
+    const GRACE: Duration = Duration::from_secs(1);
+
+    /// How a command [`run`] ran ended.
+    struct Ran {
+        status: ExitStatus,
+        stdout: String,
+        stderr: String,
+        /// Why its input wasn't all written (it stopped reading, e.g. it ended early).
+        write_error: Option<String>,
+    }
+
+    /// Run `f` on a thread; its result comes back on the receiver.
+    fn on_thread<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Receiver<T> {
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        rx
+    }
+
+    /// Everything `r` gives, read on a thread (so a full pipe can't keep the command from ending).
+    fn read_all(r: Option<impl Read + Send + 'static>) -> Receiver<String> {
+        on_thread(move || {
+            let mut bytes = Vec::new();
+            if let Some(mut r) = r {
+                let _ = r.read_to_end(&mut bytes);
+            }
+            String::from_utf8_lossy(&bytes).to_string()
+        })
+    }
+
+    /// Run `cmd` (named `name` in messages) with `input` on its standard input (none: nothing to
+    /// read), writing the input and reading its output on threads so no pipe can fill up and
+    /// block either side. A command still running after `timeout` is stopped, reaped and reported.
+    /// A write that fails (the command ended without reading it all) doesn't end the wait: the
+    /// command's own status and messages tell why.
+    fn run(name: &str, cmd: &mut Command, input: Option<Vec<u8>>, timeout: Duration) -> Result<Ran, String> {
+        let stdin = if input.is_some() { Stdio::piped() } else { Stdio::null() };
+        let mut child = cmd.stdin(stdin).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("{name}: {e}"))?;
+        // The command's input is closed once written (the thread ends), so it sees where it ends.
+        let writer = child.stdin.take().zip(input).map(|(mut w, bytes)| on_thread(move || w.write_all(&bytes)));
+        let (stdout, stderr) = (read_all(child.stdout.take()), read_all(child.stderr.take()));
+        let deadline = Instant::now() + timeout;
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) if Instant::now() < deadline => std::thread::sleep(POLL),
+                stuck => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(match stuck {
+                        Err(e) => format!("{name}: {e}"),
+                        _ => format!("{name} did not finish within {timeout:?} and was stopped"),
+                    });
+                }
+            }
+        };
+        let write_error = writer.and_then(|w| match w.recv_timeout(GRACE) {
+            Ok(Ok(())) => None,
+            Ok(Err(e)) => Some(e.to_string()),
+            Err(_) => Some("its input was not all read".to_string()),
+        });
+        let (stdout, stderr) = (stdout.recv_timeout(GRACE).unwrap_or_default(), stderr.recv_timeout(GRACE).unwrap_or_default());
+        Ok(Ran { status, stdout, stderr, write_error })
+    }
+
+    /// What `name` printed, or why it failed: its own message when it gives one.
+    fn output(name: &str, ran: Ran) -> Result<String, String> {
+        if !ran.status.success() {
+            let err = ran.stderr.trim();
+            return Err(if err.is_empty() { format!("{name} failed ({})", ran.status) } else { err.to_string() });
+        }
+        match ran.write_error {
+            Some(e) => Err(format!("{name}: {e}")),
+            None => Ok(ran.stdout),
+        }
+    }
 
     /// `lpstat -e`'s output, or `None` when it fails or takes longer than [`LPSTAT_TIMEOUT`]
     /// (then it is stopped).
     fn lpstat_destinations() -> Option<String> {
-        use std::io::Read;
-        let mut child = Command::new("lpstat").arg("-e").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
-        let mut stdout = child.stdout.take()?;
-        // Read on a thread, so a full pipe can't keep lpstat from ending.
-        let reader = std::thread::spawn(move || {
-            let mut s = String::new();
-            let _ = stdout.read_to_string(&mut s);
-            s
-        });
-        let start = std::time::Instant::now();
-        loop {
-            match child.try_wait() {
-                Ok(Some(status)) if status.success() => return reader.join().ok(),
-                Ok(Some(_)) | Err(_) => return None,
-                Ok(None) if start.elapsed() > LPSTAT_TIMEOUT => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return None;
-                }
-                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(20)),
-            }
-        }
+        output("lpstat", run("lpstat", Command::new("lpstat").arg("-e"), None, LPSTAT_TIMEOUT).ok()?).ok()
     }
 
     /// The CUPS destinations as devices (none when CUPS is missing). A destination without a
@@ -214,29 +279,50 @@ mod system {
     }
 
     /// Send `pdf` to `printer` on the paper called `paper` (a name [`printers`] gave).
-    /// Returns the job id.
+    /// Returns the job id. An `lp` that doesn't finish within [`LP_TIMEOUT`] is stopped.
     pub fn print(printer: &str, paper: &str, copies: u32, title: &str, pdf: &[u8]) -> Result<String, String> {
         if !valid_name(printer) {
             return Err(format!("`{printer}` is not a printer name"));
         }
         let keyword = ppd(printer).and_then(|p| p.papers.into_iter().find(|x| x.name.eq_ignore_ascii_case(paper)).map(|x| x.keyword));
-        let mut child = Command::new("lp")
-            .args(lp_args(printer, keyword.as_deref(), copies, title))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("lp: {e}"))?;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(pdf).map_err(|e| format!("lp: {e}"))?;
-        }
-        let out = child.wait_with_output().map_err(|e| format!("lp: {e}"))?;
-        let said = String::from_utf8_lossy(&out.stdout).to_string();
-        if !out.status.success() {
-            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-            return Err(if err.is_empty() { format!("lp failed ({})", out.status) } else { err });
-        }
+        let mut lp = Command::new("lp");
+        lp.args(lp_args(printer, keyword.as_deref(), copies, title));
+        let said = output("lp", run("lp", &mut lp, Some(pdf.to_vec()), LP_TIMEOUT)?)?;
         Ok(parse_request_id(&said).unwrap_or_else(|| said.trim().to_string()))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// A command that ends without reading its input is reported by its own message and exit
+        /// status, not as the broken pipe writing the input ran into.
+        #[test]
+        fn a_command_that_ends_early_is_reported_by_its_own_message() {
+            let mut sh = Command::new("sh");
+            sh.args(["-c", "echo nope >&2; exit 1"]);
+            let ran = run("lp", &mut sh, Some(vec![b'%'; 8 << 20]), Duration::from_secs(30)).unwrap();
+            assert_eq!(output("lp", ran), Err("nope".to_string()));
+        }
+
+        /// A command that doesn't finish in time is stopped and reaped (no process left behind),
+        /// and that is the error.
+        #[test]
+        fn a_command_that_does_not_finish_is_stopped_and_reaped() {
+            let pid_file = std::env::temp_dir().join(format!("cadcraft-cups-run-{}.pid", std::process::id()));
+            let _ = std::fs::remove_file(&pid_file);
+            let mut sh = Command::new("sh");
+            sh.args(["-c", "echo $$ > \"$0\"; exec sleep 30"]).arg(&pid_file);
+            let start = Instant::now();
+            let err = run("lp", &mut sh, Some(b"%PDF".to_vec()), Duration::from_millis(300)).err().unwrap();
+            assert!(start.elapsed() < Duration::from_secs(10), "{:?}", start.elapsed());
+            assert_eq!(err, "lp did not finish within 300ms and was stopped");
+            let pid = std::fs::read_to_string(&pid_file).unwrap();
+            let _ = std::fs::remove_file(&pid_file);
+            // A process killed but not waited for is still there (a zombie) for `kill -0`.
+            let alive = Command::new("kill").args(["-0", pid.trim()]).stderr(Stdio::null()).status().unwrap().success();
+            assert!(!alive, "process {} left behind", pid.trim());
+        }
     }
 }
 
