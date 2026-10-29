@@ -199,6 +199,7 @@ fn draw_linear_lines(config: &DimConfig<'_>, g: &mut DimGeometry, state: &Linear
     let dle = if state.tick_like { st.dim_line_extend * config.scale } else { 0.0 };
     let lo = if st.suppress_dim1 { state.measurement / 2.0 } else { f64::NEG_INFINITY };
     let hi = if st.suppress_dim2 { state.measurement / 2.0 } else { f64::INFINITY };
+    g.dim_axis = Some((state.f1, state.f2));
     let seg = |geometry: &mut DimGeometry, a: Vec2, b: Vec2| {
         let (ta, tb) = ((a - state.f1).dot(u), (b - state.f1).dot(u));
         let (t0, t1) = (ta.min(tb).max(lo), ta.max(tb).min(hi));

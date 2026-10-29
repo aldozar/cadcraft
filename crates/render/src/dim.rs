@@ -69,6 +69,9 @@ pub struct DimGeometry {
     /// DIMTMOVE 1's leader to text moved off the dimension line (its two ends), which is drawn as
     /// a dimension line but isn't the one the text measures.
     pub text_leader: Option<(Vec2, Vec2)>,
+    /// A linear dimension's whole dimension line (its two feet), drawn or not: with DIMSD1 and
+    /// DIMSD2 both on nothing of it is drawn, yet the text above and below `\X` still sits by it.
+    pub dim_axis: Option<(Vec2, Vec2)>,
 }
 
 impl DimGeometry {
@@ -404,21 +407,31 @@ pub fn dimension_geometry_with(d: &Dimension, st: &DimStyle, dimscale: f64, font
                 _ => None,
             })
             .max_by(|x, y| x.0.dist(x.1).total_cmp(&y.0.dist(y.1)))
-            .map(|(a, b)| on_line(text_mid, a, b));
-        if let Some(f) = foot {
-            let off = (text_mid - f).dot(n);
-            // Text centred on the line moves above it; text already off it stays where it is.
-            let side = if off < 0.0 { -1.0 } else { 1.0 };
-            if off.abs() < ha / 2.0 + gap * 0.5 && !d.user_text_pos {
-                text_mid = f + n * (side * (gap + ha / 2.0));
-            }
-            // As far from the line as the text above is when it sits at its place (whatever
-            // clearance placed it, #2004), on the other side; text moved away (DIMTEDIT, DIMTMOVE)
-            // leaves the part below at the usual clearance under the line. A taller or shorter
-            // part below moves by half the difference.
-            let above_off = (text_mid - f).dot(n).abs();
-            let clearance = if above_off <= gap + ha { above_off } else { gap + ha / 2.0 };
-            let below_mid = f - n * (side * (clearance + (hb - ha) / 2.0));
+            // With both halves suppressed (DIMSD1, DIMSD2) the line isn't drawn but is still there.
+            .or(g.dim_axis);
+        if let Some((a, b)) = foot {
+            let f = on_line(text_mid, a, b);
+            // DIMJUST 3 and 4 turn the text along an extension line, beside it: it doesn't sit
+            // on the dimension line, so it stays where it is and the part below goes under it,
+            // in its own frame.
+            let across = (b - a).normalized().perp().dot(n).abs() < 0.5;
+            let below_mid = if across && st.text_just >= 3 && !d.user_text_pos {
+                text_mid - n * (ha / 2.0 + gap + hb / 2.0)
+            } else {
+                let off = (text_mid - f).dot(n);
+                // Text centred on the line moves above it; text already off it stays where it is.
+                let side = if off < 0.0 { -1.0 } else { 1.0 };
+                if off.abs() < ha / 2.0 + gap * 0.5 && !d.user_text_pos {
+                    text_mid = f + n * (side * (gap + ha / 2.0));
+                }
+                // As far from the line as the text above is when it sits at its place (whatever
+                // clearance placed it, #2004), on the other side; text moved away (DIMTEDIT,
+                // DIMTMOVE) leaves the part below at the usual clearance under the line. A taller
+                // or shorter part below moves by half the difference.
+                let above_off = (text_mid - f).dot(n).abs();
+                let clearance = if above_off <= gap + ha { above_off } else { gap + ha / 2.0 };
+                f - n * (side * (clearance + (hb - ha) / 2.0))
+            };
             let l = cadcraft_fonts::layout_mtext_with(&below, &params(below_mid, text_angle));
             for p in l.pieces {
                 let base = g.text_glyphs.len();
