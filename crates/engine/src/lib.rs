@@ -332,3 +332,7 @@ impl Session {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "../tests/support/temp_dir.rs"]
+mod temp_dir;
