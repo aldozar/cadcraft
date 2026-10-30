@@ -146,6 +146,10 @@ pub struct Session {
     pub bars_shown: cmd::interface::InterfaceBars,
     /// The bars MENUBAR or TOOLBAR asked to change, for the UI to apply.
     pub bars_request: cmd::interface::BarsRequest,
+    /// The object named with a point for the input a prompt picking one object is taking
+    /// ([`Session::input_object`]): a pick at exactly that point picks that object
+    /// ([`Session::pick_object`]).
+    pick_hint: Option<(Handle, Vec2)>,
 }
 
 impl Default for Session {
@@ -198,6 +202,7 @@ impl Session {
             hatch_picks: None,
             bars_shown: Default::default(),
             bars_request: Default::default(),
+            pick_hint: None,
         }
     }
 
@@ -330,3 +335,7 @@ impl Session {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "../tests/support/temp_dir.rs"]
+mod temp_dir;
